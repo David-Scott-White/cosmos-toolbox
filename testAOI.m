@@ -4,7 +4,7 @@ imageData = loadImageStackToClass([], 1)
 %%
 imageMu = mean(imageData{1}.data(:,:,1:5),3); 
 X = imageData{1};
-X.findAOIs();
+X.findAreasOfInterest();
 X.integrateAOIs();
 
 %% 
@@ -17,4 +17,7 @@ X.integrateAOIs();
 
 %%
 close all 
-AOIViewer(X);
+y = AOIViewer(X);
+
+%%
+y.hidden

@@ -33,6 +33,13 @@ classdef ImageStack < handle
     % along with this program.  If not, see <https://www.gnu.org/licenses/>.
     % ---------------------------------------------------------------------
     
+    
+    % functions to add 
+    % IdealizeThis
+    % IdelizeAll
+    % removeOutOfBoundAOIs
+    % alignAllChannels
+    
     properties
         
         % General image stack information
@@ -55,6 +62,8 @@ classdef ImageStack < handle
         flipHorizontal = false
         loadDataToMemory = false
         aoiParameters
+        channelTform % similarity transform 
+        aoiTform % affine transform of points
         % need a prompt for setting concentration... (2x)
         
     end
@@ -83,6 +92,7 @@ classdef ImageStack < handle
     methods
         % Constructor -----------------------------------------------------
         function obj = ImageStack()
+            % should have ability to add information 
         end
         
         % -----------------------------------------------------------------
@@ -329,7 +339,7 @@ classdef ImageStack < handle
         % -----------------------------------------------------------------
         % Find Areas of interest (call external function)
         % -----------------------------------------------------------------
-        function findAOIs(obj, showResult)
+        function findAreasOfInterest(obj, showResult)
             % find and integrate AOIs
             if nargin < 2
                 showResult = 0;
@@ -342,8 +352,13 @@ classdef ImageStack < handle
             for i = obj.aoiParameters.refImageIdx(1):obj.aoiParameters.refImageIdx(2)
                 referenceImage = referenceImage + getFrame(obj,i);
             end
-            obj.AOIs = findAOIs(referenceImage);
-            obj.integrateAOIs();
+            % add in AOI parameters
+            obj.AOIs = findAOIs(referenceImage,...
+                'radius', obj.aoiParameters.radius,...
+                'gaussianTolerance', obj.aoiParameters.gaussTol,...
+                'falsePositive', obj.aoiParameters.falsePositive);
+            
+            % remove out of frame AOIs (from drift, alignment)
             if obj.driftApplied
                 obj.removeOutOfBoundAOIs
             end
@@ -354,6 +369,33 @@ classdef ImageStack < handle
                 obj.AOIs = integrateAOIs(obj.AOIs, obj.data);
                 obj.AOIsIntegrated = 1;
             end
+        end
+        
+        function applyChannelTransform(obj)
+            
+        end
+        
+        function applyAOITransform(obj)
+        end
+        
+        
+        function mapAOIs(obj, centroids, bbdiameter)
+            % centroids come from another channel. 
+            % make AOI class here
+            % should already be mapped from
+            % smExperimentViewer.findAOIsInReference
+            obj.AOIs = [];
+            boundingBox = makeBoundingBox(centroids, bbdiameter);
+            newAOIs = [];
+            for k = 1:size(centroids,1)
+                if k == 1
+                    newAOIs = AOI(centroids(k,:), [], boundingBox(k,:), []);
+                else
+                    newAOIs = [newAOIs; AOI(centroids(k,:), [], boundingBox(k,:), [])];
+                end
+                
+            end
+            obj.integrateAOIs();
         end
         
         function set.AOIs(obj, aois)

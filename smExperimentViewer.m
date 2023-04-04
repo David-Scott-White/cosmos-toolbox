@@ -33,7 +33,7 @@ classdef smExperimentViewer < handle
         hMoveChannelDownBtn
         hReferenceChannelText
         hReferenceChannelPopup
-
+        
         % CoSMoS Workflow Panels
         hAlignPanel
         hAlignLoadBtn
@@ -47,6 +47,7 @@ classdef smExperimentViewer < handle
         
         hFindAOIPanel
         hFindAOIRefBtn
+        hMapAOIRefBtn
         hFindAOIOutlierBtn
         hFindAOIsClearBtn
         
@@ -81,7 +82,7 @@ classdef smExperimentViewer < handle
         hManualEventUpBtn
         hManualEventDownBtn
         
-        % AOI Information 
+        % AOI Information
         hAOIInfoPanel
         hAOIStatusText
         hAOIStatusCheckbox
@@ -91,7 +92,7 @@ classdef smExperimentViewer < handle
         hAOINStatesValText
         hAOINEventsText
         hAOINEventsValText
-
+        
         hLayout = '3'
         hAlignment
         
@@ -100,13 +101,18 @@ classdef smExperimentViewer < handle
     properties (SetObservable)
         hAOIIdx
         AOIChannel
+        hHidden
         hPanelBorderColor = [0.7 0.7 0.7]
     end
     
     properties (Dependent)
         numImageStacks
+        numAOIViewers
+        numAOIViewerHidden
         CurrentDataShown
         ReferenceIdx
+        ChannelIdx
+        
     end
     
     properties (Access = private)
@@ -167,7 +173,7 @@ classdef smExperimentViewer < handle
                 'String', '-', ...
                 'Tooltip', 'Remove Selected Channels', ...
                 'Callback', @(varargin) obj.removeChannel()); % [1 .6 .6]
-             obj.hMoveChannelUpBtn = uicontrol(obj.hChannelPanel, 'Style', 'pushbutton', ...
+            obj.hMoveChannelUpBtn = uicontrol(obj.hChannelPanel, 'Style', 'pushbutton', ...
                 'String', '^', ...
                 'Tooltip', 'Add Channel', ...
                 'Callback', @(varargin) obj.moveChannelUp());
@@ -195,7 +201,7 @@ classdef smExperimentViewer < handle
                 'String', 'Traces', 'Value', 0, ...
                 'Tooltip', 'Show Spot Traces Only', ...
                 'Callback', @(varargin) obj.resize());
-             obj.hShowImagesTracesBtn = uicontrol(obj.hShowButtonGroup, 'Style', 'togglebutton', ...
+            obj.hShowImagesTracesBtn = uicontrol(obj.hShowButtonGroup, 'Style', 'togglebutton', ...
                 'String', 'Both', 'Value', 0, ...
                 'Tooltip', 'Show Spot Traces Only', ...
                 'Callback', @(varargin) obj.resize());
@@ -240,7 +246,7 @@ classdef smExperimentViewer < handle
                 'String', 'From Reference',...
                 'Callback', @(varargin) obj.driftRef());
             obj.hDriftAllBtn = uicontrol(obj.hDriftPanel, 'Style', 'pushbutton', ...
-                'String', 'Seperately',...
+                'String', 'Individually',...
                 'Callback', @(varargin) obj.driftAll());
             
             % DETECT AOI PANEL --------------------------------------------
@@ -262,10 +268,12 @@ classdef smExperimentViewer < handle
             obj.hFindAOIOutlierBtn = uicontrol(obj.hFindAOIPanel, 'Style', 'pushbutton', ...
                 'String', 'Filter', ...
                 'Callback', @(varargin) obj.filterReferenceAOI());
+            obj.hMapAOIRefBtn = uicontrol(obj.hFindAOIPanel, 'Style', 'pushbutton', ...
+                'String', 'Propogate AOIs', ...
+                'Callback', @(varargin) obj.mapAOIsFromReference());
             obj.hFindAOIsClearBtn = uicontrol(obj.hFindAOIPanel, 'Style', 'pushbutton', ...
                 'String', 'Clear', ...
                 'Callback', @(varargin) obj.clearAllAOIs());
-            
             
             % AOI Naviation -----------------------------------------------
             obj.hNavigationPanel = uipanel(obj.hFigure,...
@@ -328,7 +336,7 @@ classdef smExperimentViewer < handle
             obj.hApplyToAllCheckBox = uicontrol(obj.hIdealizationPanel,...
                 'Style', 'Checkbox',...
                 'String', 'All',...
-                'Value', 0); 
+                'Value', 0);
             obj.hIdealizeBtn = uicontrol(obj.hIdealizationPanel,...
                 'Style', 'pushbutton', ...
                 'String', 'Idealize',...
@@ -371,16 +379,24 @@ classdef smExperimentViewer < handle
             % KEYBOARD SHORTCUTS ------------------------------------------
             set(obj.hFigure, 'KeyPressFcn', @keyPressedLocal)
             % addlistener(obj, 'hAOIIdx', 'PostSet', @(varargin) obj.updateAOI());
+            % addlistener(obj, 'hHidden', 'PostSet', @(varargin) obj.resize());
             
             function keyPressedLocal(obj, event)
                 event.Key;
                 switch event.Key
                     case {'rightarrow'}
                         obj.UserData.nextAOI;
-                        
                     case {'leftarrow'}
                         obj.UserData.prevAOI;
-                end
+                    case {'a'}
+                        obj.UserData.runIdealize;
+                    case {'c'}
+                        obj.UserData.clearIdeal;
+                    case {'uparrow'}
+                        obj.UserData.selectAOI;
+                    case {'downarrow'}
+                        obj.UserData.deselectAOI;
+                end 
             end
             
             % RESIZE OBJECT -----------------------------------------------
@@ -394,8 +410,8 @@ classdef smExperimentViewer < handle
             obj.deleteListeners();
             for i = 1:numel(obj.hImageStackViewer)
                 delete(obj.hImageStackViewer{i});
-                 delete(obj.hAOIViewer{i});
-            end 
+                delete(obj.hAOIViewer{i});
+            end
             delete(obj.hFigure); % will delete all other child graphics objects
         end
         
@@ -409,40 +425,57 @@ classdef smExperimentViewer < handle
             end
         end
         
-        function nextAOI(obj)
-           % which AOI should we be on (min across all AOI viewers)
-           idx0 =  min(horzcat(obj.hAOIViewer{1}.idx))+1;
-           if idx0 <= obj.hImageStack(1).numberOfAOIs
-               obj.hAOIIdx = idx0;
-               obj.updateAOIText;
-               for i = 1:numel(obj.hAOIViewer) % needs to be a better way
-                   obj.hAOIViewer{i}.idx = idx0;
-               end
-           end
+        function h = get.numAOIViewerHidden(obj)
+            % check if any AOI Viewer is hidden as prompt to resize
+            h = 0;
+            for i = 1:obj.numImageStacks
+                if ~isempty(obj.hAOIViewer{i})
+                    if obj.hAOIViewer{i}.hidden 
+                        h = h + 1;
+                    end
+                end
+            end
         end
         
-         function prevAOI(obj)
-           % which AOI should we be on (min across all AOI viewers)
-           idx0 =  min(horzcat(obj.hAOIViewer{1}.idx))-1;
-           if idx0 > 0
-               obj.hAOIIdx = idx0;
-               obj.updateAOIText;
-               for i = 1:numel(obj.hAOIViewer) % needs to be a better way
-                   obj.hAOIViewer{i}.idx = idx0;
-               end
-           end
-         end
-         
-         function updateAOI(obj)
-             idx0 = obj.hAOIIdx;
-             if idx0 > 0 && idx0 <= obj.hImageStack(1).numberOfAOIs
-                 obj.updateAOIText;
-                 for i = 1:numel(obj.hAOIViewer) % needs to be a better way
-                     obj.hAOIViewer{i}.idx = idx0;
-                 end
-             end
-         end
-         
+        function h = get.hHidden(obj)
+            h = logical(obj.numAOIViewerHidden);
+        end
+        
+        function nextAOI(obj)
+            % which AOI should we be on (min across all AOI viewers)
+            % NEEDS FIX IF FIRST AOI CHANNEL HAS NO AOIS
+            idx0 =  min(horzcat(obj.hAOIViewer{1}.idx))+1;
+            if idx0 <= obj.hImageStack(1).numberOfAOIs
+                obj.hAOIIdx = idx0;
+                obj.updateAOIText;
+                for i = 1:numel(obj.hAOIViewer) % needs to be a better way
+                    obj.hAOIViewer{i}.idx = idx0;
+                end
+            end
+        end
+        
+        function prevAOI(obj)
+            % which AOI should we be on (min across all AOI viewers)
+            idx0 =  min(horzcat(obj.hAOIViewer{1}.idx))-1;
+            if idx0 > 0
+                obj.hAOIIdx = idx0;
+                obj.updateAOIText;
+                for i = 1:numel(obj.hAOIViewer) % needs to be a better way
+                    obj.hAOIViewer{i}.idx = idx0;
+                end
+            end
+        end
+        
+        function updateAOI(obj)
+            idx0 = obj.hAOIIdx;
+            if idx0 > 0 && idx0 <= obj.hImageStack(1).numberOfAOIs
+                obj.updateAOIText;
+                for i = 1:numel(obj.hAOIViewer) % needs to be a better way
+                    obj.hAOIViewer{i}.idx = idx0;
+                end
+            end
+        end
+        
         function updateAOIText(obj)
             obj.hNavigationEdit.String = num2str(obj.hAOIIdx);
             
@@ -471,7 +504,7 @@ classdef smExperimentViewer < handle
         function updateAOIViewers(obj, k)
             if ~isempty(obj.hImageStack(k).AOIs)
                 obj.hAOIViewer{k} = AOIViewer(obj.hImageStack(k), obj.hFigure);
-                obj.hAOIIdx = 1; 
+                obj.hAOIIdx = 1;
             else
                 obj.hAOIViewer{k}.delete();
                 obj.hAOIViewer(k) = [];
@@ -479,6 +512,7 @@ classdef smExperimentViewer < handle
             % switch case to detemine if resize
             obj.resize();
         end
+        
         function removeChannel(obj)
             % pop up to confirm
             idx = obj.hChannelsListBox.Value;
@@ -517,7 +551,7 @@ classdef smExperimentViewer < handle
                 obj.hCurrentChannelPopup.String = horzcat(obj.hImageStack.name);
                 if isempty(obj.hReferenceChannelPopup.Value)
                     obj.hReferenceChannelPopup.Value = 1;
-                     obj.hCurrentChannelPopup.Value = 1;
+                    obj.hCurrentChannelPopup.Value = 1;
                 end
                 % value will be [1] [1,2] [1,2,3] etc if all are selected
                 % can use this as a "selection" tool for visualization?
@@ -563,20 +597,26 @@ classdef smExperimentViewer < handle
         end
         
         function r = get.ReferenceIdx(obj)
-            r = 0; 
+            r = 0;
             if obj.numImageStacks > 0
                 r = obj.hReferenceChannelPopup.Value;
             end
         end
-
+        
+        function c = get.ChannelIdx(obj)
+            c = 0; 
+            if obj.numImageStacks > 0
+                c = obj.hCurrentChannelPopup.Value;
+            end
+        end
+        
         function driftCorrectAll(obj)
         end
         
         function alignAllToReference(obj)
             if obj.numImageStacks > 1
-                obj.hAlignment = cell(obj.numImageStacks-1); 
                 % for now just storing a similarity transform, in future
-                % store infomrationa on channel name and the affine
+                % store information on channel name and the affine
                 % transform
                 j = obj.ReferenceIdx;
                 if obj.hImageStack(j).numFrames >= 10
@@ -584,13 +624,13 @@ classdef smExperimentViewer < handle
                 else
                     nf = obj.hImageStack(j).numFrames;
                 end
-                 image1 = mean(obj.hImageStack(j).data(:,:,1:nf),3);
+                image1 = mean(obj.hImageStack(j).data(:,:,1:nf),3);
                 for i = 1:obj.numImageStacks
                     if i ~= j
                         % should have something about selecting specific
                         % frames, for now jsut use first 10 frames
                         image2 = mean(obj.hImageStack(i).data(:,:,1:nf),3);
-                        obj.hAlignment{i} = alignImages(image1, image2, 1);
+                        obj.hImageStack(i).channelTform = alignImages(image1, image2, 1);
                     end
                 end
                 
@@ -599,46 +639,72 @@ classdef smExperimentViewer < handle
         
         function findAOIsInReference(obj)
             % find and intergrate AOIs in the reference channel
-            obj.hImageStack(obj.ReferenceIdx).findAOIs;
-            bbdiameter = obj.hImageStack(obj.ReferenceIdx).AOIs(1).boundingBox(3);
-            for i = 1:obj.numImageStacks
-                if i ~=obj.ReferenceIdx
-                    
-                    tform = obj.hAlignment{i};
-                    centroidsA = vertcat( obj.hImageStack(obj.ReferenceIdx).AOIs.centroid);
-                    centroidsB = transformPointsInverse(tform, centroidsA);
-                    
-                    % HARDCODED NEED TO FIX THIS !!!!!
-                    idx1 = unique([find(centroidsB(:,1) < 10); find(centroidsB(:,1) > 512-10);...
-                        find(centroidsB(:,2) < 10); find(centroidsB(:,2) > 512-10)]);
-                    if ~isempty(idx1)
-                        centroidsB(idx1,:) = [];
-                        obj.hImageStack(obj.ReferenceIdx).AOIs(idx1) = [];
-                        % obj.hAOIViewer{obj.ReferenceIdx}.hAOI(idx1) = [];
-                        obj.hAOIViewer{obj.ReferenceIdx} = AOIViewer(obj.hImageStack(obj.ReferenceIdx), obj.hFigure);
-                        obj.hAOIViewer{obj.ReferenceIdx}.hPanel.Visible = 'off';
-                    end
-                    
-                    % store result 
-                    boundingBox = makeBoundingBox(centroidsB, bbdiameter);
-                    newAOIs = []; 
-                    for k = 1:size(centroidsB,1)
-                        if k == 1
-                            newAOIs = AOI(centroidsB(k,:), [], boundingBox(k,:), []);
-                        else
-                            newAOIs = [newAOIs; AOI(centroidsB(k,:), [], boundingBox(k,:), [])];
-                        end
-                       
-                    end
-                    obj.hImageStack(i).AOIs = newAOIs; 
-                    obj.hImageStack(i).integrateAOIs();
-                    
-                    % this wont work unless its indexed
-                    obj.hAOIViewer{i} = AOIViewer(obj.hImageStack(i), obj.hFigure);
-                    obj.hAOIViewer{i}.hPanel.Visible = 'off';
-                end
-            end
+            obj.hImageStack(obj.ReferenceIdx).findAreasOfInterest;
+            obj.hImageStack(obj.ReferenceIdx).integrateAOIs();
+            obj.hAOIViewer{obj.ReferenceIdx} = AOIViewer(obj.hImageStack(obj.ReferenceIdx), obj.hFigure);
+            obj.hAOIViewer{obj.ReferenceIdx}.hPanel.Visible = 'off';
+            addlistener(obj.hAOIViewer{obj.ReferenceIdx}, 'hidden', 'PostSet', @(varargin) obj.resize());
             obj.resize();
+        end
+        
+        function mapAOIsFromReference(obj)
+            if obj.numImageStacks > 1
+                if isempty(obj.hImageStack(obj.ReferenceIdx).AOIs)
+                    obj.findAOIsInReference();
+                end
+                bbdiameter = obj.hImageStack(obj.ReferenceIdx).AOIs(1).boundingBox(3);
+                for i = 1:obj.numImageStacks
+                    centroidsA = vertcat(obj.hImageStack(obj.ReferenceIdx).AOIs.centroid);
+                    if i ~=obj.ReferenceIdx
+                        
+                        centroidsB = centroidsA;
+                        if ~isempty(obj.hImageStack(i).channelTform)
+                            centroidsB = transformPointsInverse(obj.hImageStack(i).channelTform, centroidsB);
+                        end
+                        
+                        if ~isempty(obj.hImageStack(i).aoiTform)
+                            centroidsB = transformPointsInverse(obj.hImageStack(i).aoiTform, centroidsB);
+                        end
+                        
+                        % Write in a funciton somewhere. for now, this works
+                        
+                        % Are new AOIs out of bounds (due to drift, mapping)?
+                        [w,h] = size(obj.hImageStack(i).data(:,:,1));
+                        outOfBounds = unique([find(centroidsB(:,1) < bbdiameter);...
+                            find(centroidsB(:,1) > w-bbdiameter);...
+                            find(centroidsB(:,2) < bbdiameter);...
+                            find(centroidsB(:,2) > h-bbdiameter)]);
+                        
+                        if ~isempty(outOfBounds)
+                            centroidsB(outOfBounds,:) = [];
+                            % update the reference AOIs so all AOIs are same
+                            obj.hImageStack(obj.ReferenceIdx).AOIs(outOfBounds) = [];
+                            obj.hAOIViewer{obj.ReferenceIdx} = AOIViewer(obj.hImageStack(obj.ReferenceIdx), obj.hFigure);
+                            obj.hAOIViewer{obj.ReferenceIdx}.hPanel.Visible = 'off';
+                        end
+                        
+                        % store new AOIs in current channel
+                        obj.hImageStack(i).AOIs = [];
+                        boundingBox = makeBoundingBox(centroidsB, bbdiameter);
+                        newAOIs = [];
+                        for k = 1:size(centroidsB,1)
+                            if k == 1
+                                newAOIs = AOI(centroidsB(k,:), [], boundingBox(k,:), []);
+                            else
+                                newAOIs = [newAOIs; AOI(centroidsB(k,:), [], boundingBox(k,:), [])];
+                            end
+                        end
+                        obj.hImageStack(i).AOIs = newAOIs;
+                        % Interate AOIs and make the Viewer
+                        obj.hImageStack(i).integrateAOIs();
+                        obj.hAOIViewer{i} = AOIViewer(obj.hImageStack(i), obj.hFigure);
+                        obj.hAOIViewer{i}.hPanel.Visible = 'off';
+                        addlistener(obj.hAOIViewer{i}, 'hidden', 'PostSet', @(varargin) obj.resize());
+                        
+                    end
+                end
+                obj.resize();
+            end
         end
         
         function filterReferenceAOI(obj)
@@ -648,6 +714,34 @@ classdef smExperimentViewer < handle
         end
         
         function saveAOIs(obj)
+        end
+        
+        function runIdealize(obj)
+            if obj.hApplyToAllCheckBox.Value
+                 obj.hAOIViewer{obj.ChannelIdx}.idealizeAllAOIs();
+            else
+               obj.hAOIViewer{obj.ChannelIdx}.idealizeThisAOI();
+            end
+        end
+        
+        function clearIdeal(obj)
+            if obj.hApplyToAllCheckBox.Value
+                obj.hAOIViewer{obj.ChannelIdx}.clearAllIdeal();
+            else
+                obj.hAOIViewer{obj.ChannelIdx}.clearThisIdeal();
+            end
+        end
+        
+        function selectAOI(obj)
+            if ~isempty(obj.hImageStack{obj.ChannelIdx}.AOIs)
+                obj.hImageStack{obj.ChannelIdx}.AOIs(obj.hAOIIdx).status = 1;
+            end
+        end
+        
+        function deselectAOI(obj)
+            if ~isempty(obj.hImageStack{obj.ChannelIdx}.AOIs)
+                obj.hImageStack{obj.ChannelIdx}.AOIs(obj.hAOIIdx).status = 0;
+            end
         end
         
         function resize(obj)
@@ -677,7 +771,7 @@ classdef smExperimentViewer < handle
             obj.hShowImagesOnlyBtn.Position = [x1, y1, w/3, lineh];
             obj.hShowTracesOnlyBtn.Position = [x1+w/3, y1, w/3, lineh];
             obj.hShowImagesTracesBtn.Position = [x1+2*w/3, y1, w/3, lineh];
-
+            
             
             % CHANNEL PANEL -----------------------------------------------
             panelheight = lineh*6+2*margin;
@@ -693,7 +787,7 @@ classdef smExperimentViewer < handle
             obj.hRemoveChannelsBtn.Position = [x+w1-lineh y1-lineh lineh lineh];
             obj.hMoveChannelUpBtn.Position = [x+w1-lineh y1-2*lineh lineh lineh];
             obj.hMoveChannelDownBtn.Position = [x+w1-lineh y1-3*lineh lineh lineh];
-
+            
             y1 = y1 - 3*lineh;
             obj.hChannelsListBox.Position = [x y1 w1-lineh 4*lineh];
             
@@ -713,7 +807,7 @@ classdef smExperimentViewer < handle
             
             % inside
             y1 = panelheight-2*lineh;
-            w2 = w1/6; 
+            w2 = w1/6;
             obj.hNavigationPrevSelBtn.Position = [x, y1, w2, lineh];
             obj.hNavigationPrevBtn.Position = [x+w2, y1, w2, lineh];
             obj.hNavigationEdit. Position = [x+2*w2, y1, 2*w2, lineh];
@@ -727,9 +821,9 @@ classdef smExperimentViewer < handle
                 % PLOT IMAGES ONLY ----------------------------------------
                 case 'images'
                     % switch workflow based on what is visable --------------------
-                     obj.hIdealizationPanel.Visible = 'off';
+                    obj.hIdealizationPanel.Visible = 'off';
                     
-                    % close AOI Viewers 
+                    % close AOI Viewers
                     for i = 1:numel(obj.hAOIViewer)
                         obj.hAOIViewer{i}.hPanel.Visible = 'off';
                     end
@@ -761,10 +855,10 @@ classdef smExperimentViewer < handle
                     obj.hAlignLoadBtn.Position = [x, y1, w1/3, lineh];
                     obj.hAlignComputeBtn.Position = [x+w1/3, y1, w1/3, lineh];
                     obj.hAlignSaveBtn.Position = [x+2*w1/3, y1, w1/3, lineh];
-                   
+                    
                     
                     % DETECT AOI PANEL ------------------------------------
-                    panelheight = 2*(lineh+margin);
+                    panelheight = 3*(lineh+margin);
                     
                     y = y - panelheight-2*margin;
                     obj.hFindAOIPanel.Visible = 'on';
@@ -774,9 +868,11 @@ classdef smExperimentViewer < handle
                     
                     % inside the panel
                     y1 = panelheight-2*lineh;
-                    obj.hFindAOIRefBtn.Position = [x, y1, w1/3, lineh];
-                    obj.hFindAOIOutlierBtn.Position = [x+w1/3, y1, w1/3, lineh];
-                    obj.hFindAOIsClearBtn.Position = [x+2*w1/3, y1, w1/3, lineh];
+                    y2 = y1-lineh; 
+                    obj.hFindAOIRefBtn.Position = [x, y1, w1/2, lineh];
+                    obj.hFindAOIOutlierBtn.Position = [x+w1/2, y1, w1/2, lineh];
+                    obj.hMapAOIRefBtn.Position = [x, y2, w1/2, lineh];
+                    obj.hFindAOIsClearBtn.Position = [x+w1/2, y2, w1/2, lineh];
                     
                     
                     % IMAGE STACK VIEWERS ---------------------------------
@@ -861,15 +957,15 @@ classdef smExperimentViewer < handle
                                 
                         end
                     end
-                   
+                    
                     % Draw AOIViewers Only --------------------------------
                 case {'traces'}
-                    % workflow panel 
+                    % workflow panel
                     obj.hFindAOIPanel.Visible = 'off';
                     obj.hDriftPanel.Visible = 'off';
                     obj.hAlignPanel.Visible = 'off';
-                     
-                    % hide ImageStackViewers                
+                    
+                    % hide ImageStackViewers
                     for i = 1:numel(obj.hImageStackViewer)
                         obj.hImageStackViewer{i}.hPanel.Visible = 'off';
                     end
@@ -916,19 +1012,55 @@ classdef smExperimentViewer < handle
                     
                     
                     % AOIViewers
+                    % nAOIViewers = numel(obj.hAOIViewer);
+                    
+                    % are there hidden AOIs
                     nAOIViewers = numel(obj.hAOIViewer);
+                    if obj.hHidden
+                        nHiddenAOIViewers = 0;
+                        hiddenIdx = zeros(nAOIViewers,1);
+                        for i = 1:numel(obj.hAOIViewer)
+                            switch obj.hAOIViewer{i}.hLayout
+                                case {'0'}
+                                    nHiddenAOIViewers = nHiddenAOIViewers + 1;
+                                    hiddenIdx(i) = 1;
+                            end
+                        end
+                    end
+                    
                     x1 = x+w+margin;
                     ytop = bbox(4)-margin; % align to top panel
                     panelWidth = bbox(3)-2*margin-x1;
-                    panelHeight = floor((bbox(4)-2*margin)/nAOIViewers);
-
-                    for i = 1:nAOIViewers
-                        if ~isempty(obj.hAOIViewer{i})
+                    
+                    if obj.hHidden
+                        hiddenViewerHeight = 30; 
+                        panelHeight = floor((bbox(4) - hiddenViewerHeight*nHiddenAOIViewers-2*margin)/(nAOIViewers-nHiddenAOIViewers));
+                        yline = ytop;
+                        % top down placement                  
+                        for i = 1:nAOIViewers
+                            if i == 1
+                                ph = panelHeight;
+                            elseif i>1 && hiddenIdx(i-1) == 0
+                                ph = panelHeight;
+                            elseif i>1 && hiddenIdx(i-1) == 1
+                                ph = hiddenViewerHeight;
+                            else
+                                ph = panelHeight;
+                            end
+                            yline = yline - ph;
                             obj.hAOIViewer{i}.hPanel.Units = 'Pixels';
-                            obj.hAOIViewer{i}.Position = [x1 (ytop-margin)-(i)*(panelHeight) panelWidth panelHeight];
+                            obj.hAOIViewer{i}.Position = [x1 yline panelWidth panelHeight];
                             obj.hAOIViewer{i}.hPanel.Units = 'Normalized';
                             obj.hAOIViewer{i}.hPanel.Visible = 'on';
                         end
+                    else
+                        panelHeight = floor((bbox(4)-2*margin)/nAOIViewers);
+                        for i = 1:nAOIViewers
+                                obj.hAOIViewer{i}.hPanel.Units = 'Pixels';
+                                obj.hAOIViewer{i}.Position = [x1 (ytop-margin)-(i)*(panelHeight) panelWidth panelHeight];
+                                obj.hAOIViewer{i}.hPanel.Units = 'Normalized';
+                                obj.hAOIViewer{i}.hPanel.Visible = 'on';
+                        end   
                     end
                     
                 case {'traces&images'}

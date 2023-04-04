@@ -53,6 +53,7 @@ classdef AOIViewer < handle
         hBC
         idx
         hLayout
+        hidden = 0 
         
     end
     
@@ -165,14 +166,16 @@ classdef AOIViewer < handle
             
             % Image Display -----------------------------------------------
             mView = uimenu(cm,"Text", "View");
-            obj.testMenu = uimenu(mView, 'Text', 'Gallery', 'Checked', 'off', 'Callback', @(varargin)obj.menuViewChanged('gallery'));
+            uimenu(mView, 'Text', 'All On', 'Separator', 'off', 'Callback', @(varargin)obj.menuViewChanged('all'));
+            uimenu(mView, 'Text', 'Gallery', 'Separator', 'on', 'Callback', @(varargin)obj.menuViewChanged('gallery'));
             uimenu(mView, 'Text', 'Time Series', 'Checked', 'off','Callback', @(varargin)obj.menuViewChanged('timeseries'));
             uimenu(mView, 'Text', 'Histogram', 'Checked', 'off', 'Callback', @(varargin)obj.menuViewChanged('histogram'));
+            uimenu(mView, 'Text', 'Hide', 'Separator', 'on', 'Callback', @(varargin)obj.menuViewChanged('hide'));
             
             mImage = uimenu(cm,"Text", "Gallery");
             % uimenu(mImage,"Text", "Brightness & Contrast", 'Callback', @(varargin)obj.menuLaunchBC());
             mImageColor = uimenu(mImage, 'Text', 'color', 'Separator', 'off');
-            uimenu(mImageColor, 'Text', 'grey','Callback', @(varargin)obj.menuGalleryColorChanged('grey'));
+            uimenu(mImageColor, 'Text', 'grey', 'Callback', @(varargin)obj.menuGalleryColorChanged('grey'));
             uimenu(mImageColor, 'Text', 'blue','Callback', @(varargin)obj.menuGalleryColorChanged('blue'));
             uimenu(mImageColor, 'Text', 'green','Callback', @(varargin)obj.menuGalleryColorChanged('green'));
             uimenu(mImageColor, 'Text', 'red', 'Callback', @(varargin)obj.menuGalleryColorChanged('red'));
@@ -204,7 +207,11 @@ classdef AOIViewer < handle
             
             % Idealization ------------------------------------------------
             mIdeal = uimenu(cm,"Text", "Ideal");
-            uimenu(mIdeal,"Text", "Idealize AOI", 'Callback', @(varargin)obj.idealizeAOI());
+            uimenu(mIdeal,"Text", "Idealize AOI", 'Callback', @(varargin)obj.idealizeThisAOI());
+            uimenu(mIdeal,"Text", "Idealize All", 'Callback', @(varargin)obj.idealizeAllAOIs());
+            uimenu(mIdeal,"Text", "Parameters", 'Separator', 'on', 'Callback', @(varargin)obj.setIdealizeParameters());
+            uimenu(mIdeal,"Text", "Clear Ideal", 'Separator', 'on', 'Callback', @(varargin)obj.clearThisIdeal());
+            uimenu(mIdeal,"Text", "Clear All Ideal", 'Callback', @(varargin)obj.clearAllIdeal());
         end
         
         % Parent & Position -----------------------------------------------
@@ -244,6 +251,13 @@ classdef AOIViewer < handle
             obj.updateAOI(0)
         end
         
+        function h = get.hidden(obj)
+            h = false;
+            switch obj.hLayout
+                case {'0'}
+                    h = true;
+            end
+        end
         
         function menuButtonPushed(obj, ~)
             obj.hPanel.Units = 'Pixels';
@@ -255,15 +269,30 @@ classdef AOIViewer < handle
         
         function menuViewChanged(obj, whatChanged)
             switch whatChanged
+                
+                case {'all'}
+                    obj.showGallery = 1;
+                    obj.showTimeSeries = 1;
+                    obj.showHistogram = 1;
+                    obj.hidden = 0;
+                    
                 case {'gallery'}
                     obj.showGallery = ~obj.showGallery;
+                    obj.hidden = 0;
                     
                 case {'timeseries'}
                     obj.showTimeSeries = ~obj.showTimeSeries;
+                    obj.hidden = 0;
                     
                 case {'histogram'}
                     obj.showHistogram = ~obj.showHistogram;
+                    obj.hidden = 0;
                     
+                case {'hide'}
+                    obj.showGallery = 0;
+                    obj.showTimeSeries = 0;
+                    obj.showHistogram = 0;
+                    obj.hidden = 1;
             end
             obj.hLayout;
             obj.resize();
@@ -283,11 +312,8 @@ classdef AOIViewer < handle
                 l = '1a';
             elseif  ~obj.showGallery && ~obj.showTimeSeries && obj.showHistogram
                 l = '1c';
-            else
-                obj.showHistogram = 1;
-                obj.showHistogram = 1;
-                obj.showTimeSeries = 1;
-                l = '3';
+            elseif  ~obj.showGallery && ~obj.showTimeSeries && ~obj.showHistogram
+                l = '0';
             end
         end
         
@@ -508,6 +534,12 @@ classdef AOIViewer < handle
                     w0 = bbox(3)-4*lineh;
                     y1 = y3 - h1 - margin; % top axes
                     obj.hAxesTimeSeries.Position = [x1 y1 w0 h1];
+                    
+                case {'0'}
+                    % hidden
+                    obj.hAxesGallery.Position = [0 0 1 1];
+                    obj.hAxesHistogram.Position = [0 0 1 1];
+                    obj.hAxesTimeSeries.Position = [0,0, 1 1];
             end
         end
         
@@ -577,31 +609,56 @@ classdef AOIViewer < handle
         
         % Plot Time Series
         function plotTimeSeries(obj, init)
-            x = obj.hAOI(obj.idx).timeSeries - obj.hAOI(obj.idx).minTimeSeriesValue;
+            y = obj.hAOI(obj.idx).timeSeries - obj.hAOI(obj.idx).minTimeSeriesValue;
+            if isempty(obj.hAOI(obj.idx).fit) && length(obj.hAxesTimeSeries.Children) > 1
+                delete(obj.hAxesTimeSeries.Children(1));
+            end
             if init
                 if isempty(obj.hTime_s)
-                    plot(x,...
+                    x = 1:length(y);
+                    plot(y,...
                         'Parent', obj.hAxesTimeSeries,...
                         'Color', obj.PlotColor,...
                         'LineStyle', obj.PlotMarker{1},...
                         'Marker', obj.PlotMarker{2});
                     xlabel('Frames', 'Parent',  obj.hAxesTimeSeries);
                     set(obj.hAxesTimeSeries, 'XLim', [0, length(x)])
+   
                 else
-                    plot(obj.hTime_s, x,...
+                    x = obj.hTime_s;
+                    plot(x, y,...
                         'Parent', obj.hAxesTimeSeries,...
                         'Color', obj.PlotColor,...
                         'LineStyle', obj.PlotMarker{1},...
                         'Marker', obj.PlotMarker{2});
                     xlabel('Time (s)', 'Parent',  obj.hAxesTimeSeries);
                     ylabel('Fluoresence (AU)', 'Parent',  obj.hAxesTimeSeries);
-                    set(obj.hAxesTimeSeries, 'XLim', [obj.hTime_s(1), obj.hTime_s(end)])
+                    set(obj.hAxesTimeSeries, 'XLim', [obj.hTime_s(1), obj.hTime_s(end)]);
+                end
+                
+                % if idealized trace
+                if ~isempty(obj.hAOI(obj.idx).fit)
+                    y1 = obj.hAOI(obj.idx).fit.ideal - obj.hAOI(obj.idx).minTimeSeriesValue;
+                    hold(obj.hAxesTimeSeries, 'on');
+                    plot(x, y1, '-k', 'Parent', obj.hAxesTimeSeries, 'linewidth', 1.5);
+                    hold(obj.hAxesTimeSeries, 'off');
                 end
                 set(obj.hAxesTimeSeries, 'tickdir', 'out', 'box', 'off')
                 grid(obj.hAxesTimeSeries, obj.GridOn);
             else
                 % only need to change the data
-                obj.hAxesTimeSeries.Children(end).YData = x;
+                obj.hAxesTimeSeries.Children(end).YData = y;
+                if ~isempty(obj.hAOI(obj.idx).fit)
+                    y1 = obj.hAOI(obj.idx).fit.ideal - obj.hAOI(obj.idx).minTimeSeriesValue;
+                    if length(obj.hAxesTimeSeries.Children) > 1
+                        obj.hAxesTimeSeries.Children(end-1).YData = y1;
+                    else
+                        x = obj.hAxesTimeSeries.Children(end).XData;
+                        hold(obj.hAxesTimeSeries, 'on');
+                        plot(x, y1, '-k', 'Parent', obj.hAxesTimeSeries, 'linewidth', 1.5);
+                        hold(obj.hAxesTimeSeries, 'off');
+                    end
+                end
             end
         end
         
@@ -630,12 +687,53 @@ classdef AOIViewer < handle
                     'BarWidth', 1,...
                     'FaceColor', obj.PlotColor,...
                     'EdgeColor', obj.PlotColor);
-                %grid(obj.hAxesHistogram, obj.GridOn);
                 
             else
                 obj.hAxesHistogram.Children(end).XData = data_range;
                 obj.hAxesHistogram.Children(end).YData = data_counts;
             end
+            
+            % If ideal. bit wonky since n states can vary
+            axesHandlesToChildObjects = findobj(obj.hAxesHistogram, 'Type', 'line');
+            if ~isempty(axesHandlesToChildObjects)
+                delete(axesHandlesToChildObjects);
+            end
+            if ~isempty(obj.hAOI(obj.idx).fit)
+                components = obj.hAOI(obj.idx).fit.components; % weight, mu, sigma
+                n_components = size(components,1);
+                
+                % hold on
+                hold(obj.hAxesHistogram, 'on');
+                gauss_fit_all = zeros(size(data_range));
+                for n = 1:n_components
+                    w = components(n,1);                                        % weight
+                    mu = components(n,2)-obj.hAOI(obj.idx).minTimeSeriesValue;  % mu
+                    sigma = components(n,3);                                    % sigma
+                    
+                    % Evaluate each gaussian distribtution
+                    norm_dist_pdf = normpdf(data_range, mu, sigma).*trapz(data_range, data_counts);
+                    
+                    % store sum for gauss_fit_all
+                    gauss_fit_all = gauss_fit_all + w .* normpdf(data_range, mu, sigma);
+                    
+                    % convert PDF to distribution
+                    norm_dist = norm_dist_pdf * round(w,2);
+                    
+                    % plot this gaussian component onto the histogram
+                    plot(obj.hAxesHistogram, data_range, norm_dist,'--',...
+                        'color', 'k',...
+                        'linewidth', 1);
+                    
+                end
+                % Compute the sum of all Gaussians
+                gauss_fit_all = gauss_fit_all.* trapz(data_range, data_counts);
+                plot(obj.hAxesHistogram, data_range, gauss_fit_all,...
+                    '-',...
+                    'color', 'k',...
+                    'linewidth', 1.5);
+                 hold(obj.hAxesHistogram, 'off');
+            end
+            
             set(obj.hAxesHistogram,'xtick',[]);
             set(obj.hAxesHistogram,'ytick',[]);
             view(obj.hAxesHistogram,[90,-90])
@@ -643,9 +741,42 @@ classdef AOIViewer < handle
             set(obj.hAxesHistogram, 'XLim',get(obj.hAxesTimeSeries,'Ylim'));
         end
         
-        function idealizeAOI(obj)
+        function idealizeThisAOI(obj)
             % AOIs(obj.idx).idealize();
-            obj.hAOIs(obj.idx).fitAOI();
+            obj.hAOI(obj.idx).fitAOI();
+            obj.updateAOI(1);
+        end
+        
+        function idealizeAllAOIs(obj)
+            wb = waitbar(0, ['Idealizing | ', num2str(obj.numAOI), ' AOIs']); % add method
+            for i = 1:obj.numAOI
+                obj.hAOI(i).fitAOI();
+                waitbar(i/obj.numAOI, wb);
+            end
+            close(wb);
+            obj.updateAOI(1);
+        end
+        
+        function clearThisIdeal(obj)
+            obj.hAOI(obj.idx).fit = [];
+            obj.updateAOI(1);
+        end
+        
+        function clearAllIdeal(obj)
+            % warning sign?
+            answer = questdlg('Are you sure you want to clear all idealizations?', ...
+                'Clear', ...
+                'Yes', 'Cancel', 'Cancel');
+            switch answer
+                case ('Yes')
+                    wb = waitbar(0, ['Clearing Idealizations | ', num2str(obj.numAOI), ' AOIs']); % add method
+                    for i = 1:obj.numAOI
+                        obj.hAOI(i).fit = [];
+                        waitbar(i/obj.numAOI, wb);
+                    end
+                    close(wb);
+                    obj.updateAOI(1);
+            end
         end
         
         function delete(obj)

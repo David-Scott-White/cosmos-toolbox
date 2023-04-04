@@ -9,7 +9,6 @@ function AOIs = findAOIs(image, varargin)
 
 % Check inputs & set defaults
 radius = 2; 
-boundingBoxDiamater = radius*2; 
 gaussTol = 1e-5; 
 falsePositive = 20; 
 minDist = 5; 
@@ -35,15 +34,11 @@ for i = 1:2:length(varargin)-1
               if minDist < 0
                   minDist = 0;
               end
-          case {'bb', 'boundingBox', 'boundingBoxDiameter'}
-              boundingBoxDiamater = varargin{i+1};
-              if boundingBoxDiamater < radius
-                  boundingBoxDiamater = radius;
-              end
       end
 end
 % Make sure image is double 
 image = double(image);
+boundingBoxDiamater = radius*2; 
 
 % Find AOIs in the Image --------------------------------------------------
 BW = GLRTfiltering(image,radius+1, radius, falsePositive);

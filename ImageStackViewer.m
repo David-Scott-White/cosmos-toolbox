@@ -512,7 +512,7 @@ classdef ImageStackViewer < handle
         end
         
         function menuFindAOIs(obj)
-            obj.hImageStack.findAOIs();
+            obj.hImageStack.findAreasOfInterest();
             obj.showAOIs;
             obj.hText.String = obj.CurrentString;
         end

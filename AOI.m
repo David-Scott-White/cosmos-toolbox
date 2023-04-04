@@ -99,17 +99,18 @@ classdef AOI < handle
         
         function fitAOI(obj)
             % switch method
-            if isempty(obj.fitParam)
-                obj.setIdealizationParameters();
-            end
-            switch obj.fitParam.method
-                case 'DISC'
-                case 'vbFRET'
-                case 'SKM'
-                case 'PELT'
-                case 'CP-Cluster'
-                case 'Threshold'
-            end
+            %             if isempty(obj.fitParam)
+            %                 obj.setIdealizationParameters();
+            %             end
+            %             switch obj.fitParam.method
+            %                 case 'DISC'
+            %                 case 'vbFRET'
+            %                 case 'SKM'
+            %                 case 'PELT'
+            %                 case 'CP-Cluster'
+            %                 case 'Threshold'
+            %             end
+            obj.fit = runDISC(obj.timeSeries);
         end
         
         function clearIdealization(obj)
