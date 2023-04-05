@@ -518,9 +518,11 @@ classdef ImageStackViewer < handle
         end
         
         function menuDeleteAOIs(obj)
-            obj.hImageStack.deleteAOIs();
-            obj.clearAOIs()
-            obj.hText.String = obj.CurrentString;
+            if ~isempty(obj.hAOI)
+                obj.hImageStack.deleteAOIs();
+                obj.clearAOIs()
+                obj.hText.String = obj.CurrentString;
+            end
         end
         
         function menuUpdateShowAOI(obj)

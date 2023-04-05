@@ -468,8 +468,10 @@ classdef ImageStack < handle
         % -----------------------------------------------------------------
         % Drift Correction (frame-wise)
         % -----------------------------------------------------------------
-        function computeDriftCorrectionVideo(obj)
-            
+        function computeDriftCorrectionVideo(obj, prompt)
+            if nargin < 2
+                prompt = 1;
+            end
             % UI dialouge to check number of frames
             answer = inputdlg( {'Check every X Frames'}, 'Drift Corr.',[1,35],{'10'});
             if ~isempty(answer)
@@ -487,7 +489,7 @@ classdef ImageStack < handle
                 
                 waitbar(1, wb1, 'Per Frame Drift Computation...')
                 obj.driftList = zeros(obj.numFrames,2);
-                h2 = figure;
+                h2 = figure('Name', 'Drift Correction Result', 'NumberTitle', 'off');
                 for k = 1:2
                     z = filloutliers(driftListSample(:, k),'nearest','mean');
                     % obj.driftList(:,k) = pchip(idx(:,1), z, 1:obj.numFrames);
@@ -512,16 +514,18 @@ classdef ImageStack < handle
                 close(wb1);
                 
                 % apply drift correction?
-                answer = questdlg('Apply Drift Correction', ...
-                    'Drof Corr', ...
-                    'Yes', 'No', 'No');
-                switch answer
-                    case 'Yes'
-                        close(h2);
-                        obj.applyDriftCorrectionVideo
-                        
-                    case 'No'
-                        close(h2);
+                if prompt
+                    answer = questdlg('Apply Drift Correction', ...
+                        'Drift Corr', ...
+                        'Yes', 'No', 'No');
+                    switch answer
+                        case 'Yes'
+                            close(h2);
+                            obj.applyDriftCorrectionVideo
+                            
+                        case 'No'
+                            close(h2);
+                    end
                 end
             else
                 
@@ -540,7 +544,7 @@ classdef ImageStack < handle
             
             % Apply
             if ~isempty(driftList) && ~obj.driftApplied
-                wb2 = waitbar(0, 'Applying...');
+                wb2 = waitbar(0, ['Applying Drift Correction | ', obj.name]);
                 for i = 1:obj.numFrames
                     obj.data(:,:,i) = immove(obj.data(:,:,i),driftList(i,1), driftList(i,2));
                     waitbar(i/obj.numFrames, wb2);

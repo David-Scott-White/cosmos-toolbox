@@ -75,7 +75,6 @@ classdef smExperimentViewer < handle
         % Manual Adjustent
         hManualAdjustPanel
         hNumberOfStatesBtn
-        
         hManualEventBtn  %toggle
         hManualEventLeftBtn
         hManualEventRightBtn
@@ -152,6 +151,9 @@ classdef smExperimentViewer < handle
             uimenu(hMenuTracesPlot, 'Text', 'Signal to Background (SNB)',  'Callback', @(varargin) obj.plotAOISNB());
             uimenu(hMenuTracesPlot, 'Text', 'Signal to Noise (SNR)',  'Callback', @(varargin) obj.plotAOISNR());
             
+            hMenuAdvanced = uimenu(obj.hFigure, 'Text', 'Advanced');
+            uimenu(hMenuAdvanced, 'Text', 'Resize', 'Callback', @(varargin) obj.resize());
+            
             %  Channel list -----------------------------------------------
             obj.hChannelPanel = uipanel(obj.hFigure,...
                 'Units', 'pixels',...
@@ -181,8 +183,7 @@ classdef smExperimentViewer < handle
                 'String', 'v', ...
                 'Tooltip', 'Remove Selected Channels', ...
                 'Callback', @(varargin) obj.moveChannelDown());
-            obj.hChannelsListBox = uicontrol(obj.hChannelPanel, 'Style', 'listbox', ...
-                'Callback', @(varargin) obj.refresh());
+            obj.hChannelsListBox = uicontrol(obj.hChannelPanel, 'Style', 'listbox'); % was obj.refresh callback
             obj.hReferenceChannelText = uicontrol(obj.hChannelPanel, 'Style', 'text',...
                 'String', 'Reference', 'HorizontalAlignment', 'left',...
                 'FontSize', 12);
@@ -350,7 +351,8 @@ classdef smExperimentViewer < handle
             obj.hNumberOfStatesBtn = uicontrol(obj.hIdealizationPanel,...
                 'Style', 'togglebutton',...
                 'String', 'States',...
-                'Value', 0);
+                'Value', 0,...
+                'Callback', @(varargin) obj.manualAdjustStates());
             obj.hManualEventBtn = uicontrol(obj.hIdealizationPanel,...
                 'Style', 'togglebutton',...
                 'Value', 0,...
@@ -369,17 +371,15 @@ classdef smExperimentViewer < handle
                 'Style', 'pushbutton', ...
                 'String', '^',...
                 'Enable', 'off',...
-                'Callback', @(varargin) obj.manualEventUp());
+                'Callback', @(varargin) obj.manualStateChange(1));
             obj.hManualEventDownBtn = uicontrol(obj.hIdealizationPanel,...
                 'Style', 'pushbutton', ...
                 'String', 'v',...
                 'Enable', 'off',...
-                'Callback', @(varargin) obj.manualEventDown());
+                'Callback', @(varargin) obj.manualStateChange(-1));
             
             % KEYBOARD SHORTCUTS ------------------------------------------
             set(obj.hFigure, 'KeyPressFcn', @keyPressedLocal)
-            % addlistener(obj, 'hAOIIdx', 'PostSet', @(varargin) obj.updateAOI());
-            % addlistener(obj, 'hHidden', 'PostSet', @(varargin) obj.resize());
             
             function keyPressedLocal(obj, event)
                 event.Key;
@@ -396,7 +396,9 @@ classdef smExperimentViewer < handle
                         obj.UserData.selectAOI;
                     case {'downarrow'}
                         obj.UserData.deselectAOI;
-                end 
+                    case {'space'}
+                        obj.UserData.resize();
+                end
             end
             
             % RESIZE OBJECT -----------------------------------------------
@@ -481,40 +483,34 @@ classdef smExperimentViewer < handle
             
         end
         
-        function refresh(obj)
-            % obj.hExperiment = obj.hExperiment;
+        function updateAOIViewers(obj, k)
+            if ~isempty(obj.hImageStack(k).AOIs)
+                obj.hAOIViewer{k}.upateAOIsFromImageStack(obj.hImageStack(k));
+            else
+                %obj.hAOIViewer{k}.delete();
+                %obj.hAOIViewer(k) = [];
+            end
+            obj.resize();
         end
         
         function addChannel(obj)
             loadImagesToMemory = 1;
             imageDataTemp = loadImageStackToClass([], loadImagesToMemory);
             % check for imageDataTemp empty?
-            
+           
             for k = 1:length(imageDataTemp)
                 obj.hImageStack = [obj.hImageStack imageDataTemp{k}];
                 p = numel(obj.hImageStack);
                 obj.hImageStackViewer{p} = ImageStackViewer(imageDataTemp{k}, obj.hFigure);
-                obj.hAOIViewer{p} = [];
-                addlistener(obj.hImageStack(p), 'AOIsIntegrated', 'PostSet', @(varargin) obj.updateAOIViewers(p));
+                % addlistener(obj.hImageStack(p), 'AOIsIntegrated', 'PostSet', @(varargin) obj.updateAOIViewers(p));
+                obj.hAOIViewer{p} = AOIViewer([], obj.hFigure);
             end
             obj.updateChannelList();
-            obj.resize();
-            
-        end
-        function updateAOIViewers(obj, k)
-            if ~isempty(obj.hImageStack(k).AOIs)
-                obj.hAOIViewer{k} = AOIViewer(obj.hImageStack(k), obj.hFigure);
-                obj.hAOIIdx = 1;
-            else
-                obj.hAOIViewer{k}.delete();
-                obj.hAOIViewer(k) = [];
-            end
-            % switch case to detemine if resize
             obj.resize();
         end
         
         function removeChannel(obj)
-            % pop up to confirm
+            % not deleting the AOI Viewer, still in place... 
             idx = obj.hChannelsListBox.Value;
             if ~isempty(idx) && obj.numImageStacks > 0
                 answer = questdlg('Delete Channel?', ...
@@ -533,7 +529,6 @@ classdef smExperimentViewer < handle
                         obj.resize();
                     case 'No'
                 end
-                
             end
         end
         
@@ -545,7 +540,8 @@ classdef smExperimentViewer < handle
                     v = 1;
                 end
                 obj.hChannelsListBox.Value = v;
-                obj.hChannelsListBox.Max = length(obj.hImageStack);
+                % obj.hChannelsListBox.Max = length(obj.hImageStack);
+                obj.hChannelsListBox.Max = 1; 
                 obj.hChannelsListBox.String = horzcat(obj.hImageStack.name);
                 obj.hReferenceChannelPopup.String = horzcat(obj.hImageStack.name);
                 obj.hCurrentChannelPopup.String = horzcat(obj.hImageStack.name);
@@ -564,6 +560,69 @@ classdef smExperimentViewer < handle
                 obj.hCurrentChannelPopup.Value = 1;
                 obj.hCurrentChannelPopup.String = {''};
             end
+        end
+        
+        function moveChannelUp(obj)
+            selected = obj.hChannelsListBox.Value(1);
+            newposition = selected-1;
+            if newposition > 0
+                idx = 1:obj.numImageStacks;
+                idx(newposition) = selected;
+                idx(selected) = selected-1;
+                
+                obj.hImageStack = obj.hImageStack(idx);
+                obj.hImageStackViewer = obj.hImageStackViewer(idx);
+                obj.hAOIViewer = obj.hAOIViewer(idx);
+                
+                obj.updateChannelList();
+                obj.resize();
+            end
+            
+        end
+        
+        function moveChannelDown(obj)
+            selected = obj.hChannelsListBox.Value(1);
+            newposition = selected+1;
+            if newposition <= obj.numImageStacks
+                idx = 1:obj.numImageStacks;
+                idx(newposition) = selected;
+                idx(selected) = selected+1;
+                
+                obj.hImageStack = obj.hImageStack(idx);
+                obj.hImageStackViewer = obj.hImageStackViewer(idx);
+                obj.hAOIViewer = obj.hAOIViewer(idx);
+                
+                obj.updateChannelList();
+                obj.resize();
+            end
+        end
+        
+        function driftRef(obj)
+            
+            % compute drift correction from the reference channel
+            obj.hImageStack(obj.ReferenceIdx).computeDriftCorrectionVideo(0);
+            
+            % apply drift correction to all channels?
+            answer = questdlg('Apply Drift Correction To All Channels?', ...
+                'Drift Corr', ...
+                'Yes', 'No', 'No');
+            % need to check if the figure exists?
+            switch answer
+                case 'Yes'
+                    close('Drift Correction Result')
+                    for i = 1:obj.numImageStacks
+                        if i~=obj.ReferenceIdx
+                            obj.hImageStack(i).driftList = obj.hImageStack(obj.ReferenceIdx).driftList;
+                        end
+                        obj.hImageStack(i).applyDriftCorrectionVideo()
+                    end
+                    
+                case 'No'
+                    close('Drift Correction Result')
+            end
+        end
+        
+        function driftAll(obj)
         end
         
         % adjust view
@@ -642,8 +701,11 @@ classdef smExperimentViewer < handle
             obj.hImageStack(obj.ReferenceIdx).findAreasOfInterest;
             obj.hImageStack(obj.ReferenceIdx).integrateAOIs();
             obj.hAOIViewer{obj.ReferenceIdx} = AOIViewer(obj.hImageStack(obj.ReferenceIdx), obj.hFigure);
+            obj.hAOIViewer{obj.ReferenceIdx}.updateAOI(1);
             obj.hAOIViewer{obj.ReferenceIdx}.hPanel.Visible = 'off';
-            addlistener(obj.hAOIViewer{obj.ReferenceIdx}, 'hidden', 'PostSet', @(varargin) obj.resize());
+            obj.hAOIIdx = 1;
+            
+            obj.updateAOIText;
             obj.resize();
         end
         
@@ -680,6 +742,7 @@ classdef smExperimentViewer < handle
                             % update the reference AOIs so all AOIs are same
                             obj.hImageStack(obj.ReferenceIdx).AOIs(outOfBounds) = [];
                             obj.hAOIViewer{obj.ReferenceIdx} = AOIViewer(obj.hImageStack(obj.ReferenceIdx), obj.hFigure);
+                            obj.hAOIViewer{obj.ReferenceIdx}.updateAOI(1);
                             obj.hAOIViewer{obj.ReferenceIdx}.hPanel.Visible = 'off';
                         end
                         
@@ -697,13 +760,26 @@ classdef smExperimentViewer < handle
                         obj.hImageStack(i).AOIs = newAOIs;
                         % Interate AOIs and make the Viewer
                         obj.hImageStack(i).integrateAOIs();
-                        obj.hAOIViewer{i} = AOIViewer(obj.hImageStack(i), obj.hFigure);
-                        obj.hAOIViewer{i}.hPanel.Visible = 'off';
-                        addlistener(obj.hAOIViewer{i}, 'hidden', 'PostSet', @(varargin) obj.resize());
-                        
+                        obj.updateAOIViewers(i);
                     end
                 end
                 obj.resize();
+            end
+        end
+        
+        function clearAllAOIs(obj)
+            % warning
+            answer = questdlg('Are you sure you want to delete all AOIs?', ...
+                'Clear', ...
+                'Yes', 'Cancel', 'Cancel');
+            switch answer
+                case ('Yes')
+                    for i = 1:obj.numImageStacks
+                        if ~isempty(obj.hImageStack(i).AOIs)
+                            obj.hImageStackViewer{i}.menuDeleteAOIs();
+                            obj.hAOIViewer{i}.upateAOIsFromImageStack(obj.hImageStack(i));
+                        end
+                    end
             end
         end
         
@@ -729,6 +805,36 @@ classdef smExperimentViewer < handle
                 obj.hAOIViewer{obj.ChannelIdx}.clearAllIdeal();
             else
                 obj.hAOIViewer{obj.ChannelIdx}.clearThisIdeal();
+            end
+        end
+        
+        function manualAdjustStates(obj)
+            % toggle
+            if obj.hNumberOfStatesBtn.Value
+                % turn on up and down keys, turn off events
+                obj.hManualEventUpBtn.Enable = 'on' ;
+                obj.hManualEventDownBtn.Enable = 'on';
+                obj.hManualEventLeftBtn.Enable = 'off';
+                obj.hManualEventRightBtn.Enable = 'off';
+                obj.hManualEventBtn.Value = 0;
+            else
+                obj.hManualEventUpBtn.Enable = 'off' ;
+                obj.hManualEventDownBtn.Enable = 'off';
+                obj.hManualEventLeftBtn.Enable = 'off';
+                obj.hManualEventDownBtn.Enable = 'off';
+                obj.hManualEventRightBtn.Enable = 'off';
+            end
+        end
+        
+        function manualStateChange(obj, p)
+            % p == -1 or 1 (down or up)
+            if obj.hNumberOfStatesBtn.Value && ~obj.hManualEventBtn.Value 
+                % global adjust state
+                obj.hImageStack(obj.ChannelIdx).AOIs(obj.hAOIIdx).manualAdjustState(p)
+                obj.hAOIViewer{obj.ChannelIdx}.updateAOI(0);
+                
+            elseif ~obj.hNumberOfStatesBtn.Value && obj.hManualEventBtn.Value
+                % adjust state of only this event
             end
         end
         
@@ -816,7 +922,6 @@ classdef smExperimentViewer < handle
             
             
             % Layout -----------------------------------------------------
-            
             switch obj.CurrentDataShown
                 % PLOT IMAGES ONLY ----------------------------------------
                 case 'images'
@@ -999,14 +1104,14 @@ classdef smExperimentViewer < handle
                     obj.hClearIdealBtn.Position = [x, y4, w2, lineh];
                     x1 = x+w2;
                     x2 = x+w2+w1/4;
-                    obj.hNumberOfStatesBtn.Position = [x1, y3, w3, lineh];
-                    obj.hManualEventBtn.Position = [x2, y3, w3, lineh];
+                    obj.hManualEventBtn.Position = [x1, y3, w3, lineh];
+                    obj.hNumberOfStatesBtn.Position = [x2, y3, w3, lineh];
                     
-                    obj.hManualEventUpBtn.Position = [x1, y4, w4, lineh];
-                    obj.hManualEventDownBtn.Position = [x1+w4, y4, w4, lineh];
+                    obj.hManualEventLeftBtn.Position = [x1, y4, w4, lineh];
+                    obj.hManualEventRightBtn.Position = [x1+w4, y4, w4, lineh];
                     
-                    obj.hManualEventLeftBtn.Position = [x1+2*w4, y4, w4, lineh];
-                    obj.hManualEventRightBtn.Position = [x1+3*w4, y4, w4, lineh];
+                    obj.hManualEventUpBtn.Position = [x1+2*w4, y4, w4, lineh];
+                    obj.hManualEventDownBtn.Position = [x1+3*w4, y4, w4, lineh];
                     
                     % AOI INFO PANEL --------------------------------------
                     
@@ -1014,7 +1119,6 @@ classdef smExperimentViewer < handle
                     % AOIViewers
                     % nAOIViewers = numel(obj.hAOIViewer);
                     
-                    % are there hidden AOIs
                     nAOIViewers = numel(obj.hAOIViewer);
                     if obj.hHidden
                         nHiddenAOIViewers = 0;
@@ -1035,32 +1139,36 @@ classdef smExperimentViewer < handle
                     if obj.hHidden
                         hiddenViewerHeight = 30; 
                         panelHeight = floor((bbox(4) - hiddenViewerHeight*nHiddenAOIViewers-2*margin)/(nAOIViewers-nHiddenAOIViewers));
+                        if panelHeight == inf
+                            panelHeight = floor((bbox(4)-2*margin)/nAOIViewers);
+                        end
                         yline = ytop;
                         % top down placement                  
                         for i = 1:nAOIViewers
-                            if i == 1
-                                ph = panelHeight;
-                            elseif i>1 && hiddenIdx(i-1) == 0
-                                ph = panelHeight;
-                            elseif i>1 && hiddenIdx(i-1) == 1
+                            ph = panelHeight;
+                            if hiddenIdx(i)
                                 ph = hiddenViewerHeight;
-                            else
-                                ph = panelHeight;
                             end
                             yline = yline - ph;
+                            obj.hAOIViewer{i}.hPanel.Units = 'Pixels';
+                            obj.hAOIViewer{i}.Position = [x1 yline panelWidth ph];
+                            obj.hAOIViewer{i}.hPanel.Units = 'Normalized';
+                            obj.hAOIViewer{i}.hPanel.Visible = 'on';
+                        end
+                       
+                        
+                        % still have a warning if the bottom plot is off
+                        % and larger than the parent figure
+                    else
+                        panelHeight = floor((bbox(4)-margin)/nAOIViewers);
+                        yline = margin;
+                        for i = nAOIViewers:-1:1
                             obj.hAOIViewer{i}.hPanel.Units = 'Pixels';
                             obj.hAOIViewer{i}.Position = [x1 yline panelWidth panelHeight];
                             obj.hAOIViewer{i}.hPanel.Units = 'Normalized';
                             obj.hAOIViewer{i}.hPanel.Visible = 'on';
+                            yline = yline + panelHeight;
                         end
-                    else
-                        panelHeight = floor((bbox(4)-2*margin)/nAOIViewers);
-                        for i = 1:nAOIViewers
-                                obj.hAOIViewer{i}.hPanel.Units = 'Pixels';
-                                obj.hAOIViewer{i}.Position = [x1 (ytop-margin)-(i)*(panelHeight) panelWidth panelHeight];
-                                obj.hAOIViewer{i}.hPanel.Units = 'Normalized';
-                                obj.hAOIViewer{i}.hPanel.Visible = 'on';
-                        end   
                     end
                     
                 case {'traces&images'}

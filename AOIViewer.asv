@@ -338,7 +338,7 @@ classdef AOIViewer < handle
             obj.hLayout;
             obj.resize();
             
-            % PATCH TO GET THE MAIN WINDOW TO RESIZE IF HIDING OBJECTS
+            % PATCH TO GET THE MAIN WINDOW 
             if obj.smExperimentViewer
                 obj.hPanel.Parent.SizeChangedFcn();
             end

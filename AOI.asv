@@ -113,14 +113,8 @@ classdef AOI < handle
             obj.fit = runDISC(obj.timeSeries);
         end
         
-        function manualAdjustState(obj, p)
-            % p can be -1 or 1
-            if ~isempty(obj.fit)
-                k = size(obj.fit.components,1)+p;
-                if k > 0 && k <= size(obj.fit.all_ideal,2)
-                    [obj.fit.components,  obj.fit.ideal, obj.fit.class] = computeCenters(obj.timeSeries, obj.fit.all_ideal(:,k));
-                end
-            end
+        function manualAdjustState(obj, k)
+            % k can be -1 or 1
         end
         
         function clearIdealization(obj)

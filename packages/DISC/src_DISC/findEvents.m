@@ -1,4 +1,4 @@
-function [all_events] = findEvents(data_fit, first_and_last, max_state)
+function [all_events] = findEvents(data_fit)
 %% Find Events and Dwell Times from sequence of states 
 % David S. White
 % dwhite7@wisc.edu
@@ -16,9 +16,8 @@ function [all_events] = findEvents(data_fit, first_and_last, max_state)
 % "first_and_last" for comprehension. 
 % 2019-10-29 DSW fix for first and last event in case of no events 
 % 2020-02-11 DSW added "max_state" as variable
+% 2022-04-05 DSW speed improvement with help of ChatGPT3.5
 %
-% Note- should export first and last events seperately. "Waiting-Time
-% Paradox".
 %
 % Input Variables:
 % ----------------
@@ -36,69 +35,31 @@ function [all_events] = findEvents(data_fit, first_and_last, max_state)
 %
 % -------------------------------------------------------------------------
 % 
-% check for first_and_last. Default is not to include first and last events
-if ~exist('first_and_last','var') || isempty(first_and_last)
-    first_and_last = 1;
-end
-
 % grab all the state labels of "data_fit" as unique integers 
 [~,~,state_sequence] = unique(data_fit); 
+n_data_points = numel(data_fit);
+event_index = (diff(state_sequence)~=0);
+n_events = sum(event_index);
 
-% Take the difference of the intergers. Values of 0 == no event. 
-event_index = find(diff(state_sequence)~=0);
-if isempty(event_index)
-    if first_and_last
-        all_events = [1,length(data_fit),length(data_fit),data_fit(1)];
-        return
-    else
-        all_events = [];
-        return
-    end
+if ~n_events
+    all_events = [1,n_data_points,n_data_points,data_fit(1)];
+    return
 end
 
 % Allocate space for output variable. number_of_events by 4;
-all_events = zeros(length(event_index)-1,4); 
+all_events = zeros(n_events+1,4); 
 
 % event_start
-all_events(:,1) = event_index(1:end-1)+1; 
+all_events(:,1) = [1; find(event_index)+1];
 
 % event_stop 
-all_events(:,2) = event_index(2:end); 
-
-% add in first and last event [optional]
-if first_and_last
-    n_data_points = length(state_sequence);
-    
-    % check if no events were found (i.e one event in all_events)
-    if isempty(all_events)
-        all_events = zeros(2,4);
-        all_events(1,:) = [1,event_index, (event_index), state_sequence(1)];
-        all_events(2,:) = [event_index+1,n_data_points, n_data_points-event_index, state_sequence(end)];
-    else
-        first_event = [1,all_events(1,1)-1, 0 ,0];
-        last_event  = [all_events(end,2)+1, n_data_points, 0, 0];
-        % add to all_events
-        all_events = [first_event; all_events; last_event];
-    end
-end
+all_events(:,2) = [all_events(2:end,1)-1; n_data_points];
 
 % Find dwell time of each event
 all_events(:,3) = all_events(:,2) - all_events(:,1)+1;
 
 % find the state label of each event from "data_fit"
 all_events(:,4) = data_fit(all_events(:,1));
-
-% max state? Truncate events until the max observed state (photobleaching?)
-if exist('max_state', 'var')
-    if max_state
-        maxState = max(all_events(:,4));
-        % does max state exist?
-        idx = find(all_events(:,4) == maxState);
-        if ~isempty(idx)
-            all_events = all_events(1:idx(end),:);
-        end
-    end
-end
 
 end
 
