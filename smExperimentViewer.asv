@@ -371,12 +371,12 @@ classdef smExperimentViewer < handle
                 'Style', 'pushbutton', ...
                 'String', '^',...
                 'Enable', 'off',...
-                'Callback', @(varargin) obj.manualEventUp());
+                'Callback', @(varargin) obj.manualStateChange(1));
             obj.hManualEventDownBtn = uicontrol(obj.hIdealizationPanel,...
                 'Style', 'pushbutton', ...
                 'String', 'v',...
                 'Enable', 'off',...
-                'Callback', @(varargin) obj.manualEventDown());
+                'Callback', @(varargin) obj.manualStateChange(-1));
             
             % KEYBOARD SHORTCUTS ------------------------------------------
             set(obj.hFigure, 'KeyPressFcn', @keyPressedLocal)
@@ -673,23 +673,55 @@ classdef smExperimentViewer < handle
         end
         
         function alignAllToReference(obj)
+            x = 5; 
             if obj.numImageStacks > 1
                 % for now just storing a similarity transform, in future
                 % store information on channel name and the affine
                 % transform
                 j = obj.ReferenceIdx;
                 if obj.hImageStack(j).numFrames >= 10
-                    nf = 10;
+                    nf1 = 10;
                 else
-                    nf = obj.hImageStack(j).numFrames;
+                    nf1 = obj.hImageStack(j).numFrames;
                 end
-                image1 = mean(obj.hImageStack(j).data(:,:,1:nf),3);
+                image1 = mean(obj.hImageStack(j).data(:,:,1:nf1),3);
                 for i = 1:obj.numImageStacks
                     if i ~= j
                         % should have something about selecting specific
                         % frames, for now jsut use first 10 frames
-                        image2 = mean(obj.hImageStack(i).data(:,:,1:nf),3);
+                        if obj.hImageStack(i).numFrames >= 10
+                            nf2 = 10;
+                        else
+                            nf2 = obj.hImageStack(i).numFrames;
+                        end
+                        image2 = mean(obj.hImageStack(i).data(:,:,1:nf2),3);
                         obj.hImageStack(i).channelTform = alignImages(image1, image2, 1);
+                        
+                        % if align AOI is checked in main GUI or
+                        % something.. 
+                        if ~exist('aoi1', 'var')
+                            aoi1 = findAOIs(image1, 'tol', 0);
+                        end
+                        aoi2 = findAOIs(image2, 'tol', 0);
+                        centroids2 = transformPointsForward(obj.hImageStack(i).channelTform, vertcat(aoi2.centroid));
+                         
+                        % affine transform
+                        [centroids1, centroids2] = getCentroidPairs(vertcat(aoi1.centroid), centroids2, 1);
+
+                        numCentroids = size(centroids1,1);
+                        if numCentroids >= 10
+                            obj.hImageStack(i).aoiTform = fitgeotrans(centroids1, centroids2, 'affine');
+                            centroids3 = transformPointsInverse( obj.hImageStack(i).aoiTform, centroids2);
+                            rmse = sqrt(sum((centroids3-centroids1).^2)./numCentroids);
+                            disp([char(obj.hImageStack(j).name), ' & ', char(obj.hImageStack(i).name)...
+                                ' | Pairs: ', num2str(numCentroids), ' | RMSE (x, y): ', num2str(rmse)]);
+                            
+                            % maybe make a plot? 
+                            
+                        else
+                            disp([char(obj.hImageStack(j).name), ' & ', char(obj.hImageStack(i).name)...
+                                ' | Too Few Pairs for Affine Transform: ', num2str(numCentroids)])
+                        end
                     end
                 end
                 
@@ -722,6 +754,10 @@ classdef smExperimentViewer < handle
                         centroidsB = centroidsA;
                         if ~isempty(obj.hImageStack(i).channelTform)
                             centroidsB = transformPointsInverse(obj.hImageStack(i).channelTform, centroidsB);
+                        end
+                        
+                        if ~isempty(obj.hImageStack(i).aoiTform)
+                            centroidsB = transformPointsInverse(obj.hImageStack(i).aoiTform, centroidsB);
                         end
                         
                         if ~isempty(obj.hImageStack(i).aoiTform)
@@ -826,35 +862,15 @@ classdef smExperimentViewer < handle
             end
         end
         
-        function manualEventUp(obj)
-            if obj.hNumberOfStatesBtn.Value && ~obj.hManualEventBtn.Value
+        function manualStateChange(obj, p)
+            % p == -1 or 1 (down or up)
+            if obj.hNumberOfStatesBtn.Value && ~obj.hManualEventBtn.Value 
                 % global adjust state
-                x = 5;
+                obj.hImageStack(obj.ChannelIdx).AOIs(obj.hAOIIdx).manualAdjustState(p)
+                obj.hAOIViewer{obj.ChannelIdx}.updateAOI(0);
                 
             elseif ~obj.hNumberOfStatesBtn.Value && obj.hManualEventBtn.Value
-                % adjust state of only this even
-            end
-        end
-        
-        function manualEventDown(obj)
-            if obj.hNumberOfStatesBtn.Value && ~obj.hManualEventBtn.Value
-                % global adjust state
-                c = 5;
-                if ~isempty(obj.hImageStack(obj.ChannelIdx).AOIs(obj.hAOIIdx).fit)
-                    k = size(obj.hImageStack(obj.ChannelIdx).AOIs(obj.hAOIIdx).fit.components,1)-1; 
-                    if k > 1
-                        ss = obj.hImageStack(obj.ChannelIdx).AOIs(obj.hAOIIdx).fit.all_ideal(:,k);
-                        [comps, ideal, class] = computeCenters(obj.hImageStack(obj.ChannelIdx).AOIs(obj.hAOIIdx).timeSeries-
-                         obj.hImageStack(obj.ChannelIdx).AOIs(obj.hAOIIdx).fit.components = comps; 
-                         obj.hImageStack(obj.ChannelIdx).AOIs(obj.hAOIIdx).fit.ideal = ideal;
-                         obj.hImageStack(obj.ChannelIdx).AOIs(obj.hAOIIdx).fit.class = class;
-                         
-                    end
-                end
-                
-                
-            elseif ~obj.hNumberOfStatesBtn.Value && obj.hManualEventBtn.Value
-                % adjust state of only this even
+                % adjust state of only this event
             end
         end
         
@@ -1130,8 +1146,8 @@ classdef smExperimentViewer < handle
                     obj.hManualEventLeftBtn.Position = [x1, y4, w4, lineh];
                     obj.hManualEventRightBtn.Position = [x1+w4, y4, w4, lineh];
                     
-                    obj.hManualEventUpBtn.Position = [x1+2*w4, y4, w4, lineh];
-                    obj.hManualEventDownBtn.Position = [x1+3*w4, y4, w4, lineh];
+                    obj.hManualEventDownBtn.Position = [x1+2*w4, y4, w4, lineh];
+                    obj.hManualEventUpBtn.Position = [x1+3*w4, y4, w4, lineh];
                     
                     % AOI INFO PANEL --------------------------------------
                     

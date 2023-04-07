@@ -268,8 +268,7 @@ classdef AOIViewer < handle
             end
         end
         
-        % UPDATE AOIs
-        
+        % UPDATE AOIs without regenerating the Viewer from scratch
         function upateAOIsFromImageStack(obj, x)
             switch class(x)
                 case {'ImageStack'}

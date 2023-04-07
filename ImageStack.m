@@ -303,7 +303,11 @@ classdef ImageStack < handle
                 dlgtitle = 'AOI params.';
                 dims = [1 35];
                 if isempty(obj.aoiParameters)
-                    definput = {'1', '5', '2', '20', '1e-5'};
+                    f2 = 5; 
+                    if f2 > size(obj.data,3)
+                        f2 = size(obj.data,3);
+                    end
+                    definput = {'1', num2str(f2), '2', '20', '1e-5'};
                 else
                     definput = {num2str(obj.aoiParameters.refImageIdx(1)), num2str(obj.aoiParameters.refImageIdx(2)),...
                         num2str(obj.aoiParameters.radius), num2str(obj.aoiParameters.falsePositive), num2str(obj.aoiParameters.gaussTol)};
@@ -339,11 +343,9 @@ classdef ImageStack < handle
         % -----------------------------------------------------------------
         % Find Areas of interest (call external function)
         % -----------------------------------------------------------------
-        function findAreasOfInterest(obj, showResult)
+        function findAreasOfInterest(obj)
             % find and integrate AOIs
-            if nargin < 2
-                showResult = 0;
-            end
+            
             % see if there are paramters, if not set
             if isempty(obj.aoiParameters)
                 setAOIParameters(obj, [])

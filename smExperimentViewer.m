@@ -673,23 +673,59 @@ classdef smExperimentViewer < handle
         end
         
         function alignAllToReference(obj)
+            x = 5; 
             if obj.numImageStacks > 1
                 % for now just storing a similarity transform, in future
                 % store information on channel name and the affine
                 % transform
                 j = obj.ReferenceIdx;
                 if obj.hImageStack(j).numFrames >= 10
-                    nf = 10;
+                    nf1 = 10;
                 else
-                    nf = obj.hImageStack(j).numFrames;
+                    nf1 = obj.hImageStack(j).numFrames;
                 end
-                image1 = mean(obj.hImageStack(j).data(:,:,1:nf),3);
+                image1 = mean(obj.hImageStack(j).data(:,:,1:nf1),3);
                 for i = 1:obj.numImageStacks
                     if i ~= j
                         % should have something about selecting specific
                         % frames, for now jsut use first 10 frames
-                        image2 = mean(obj.hImageStack(i).data(:,:,1:nf),3);
+                        if obj.hImageStack(i).numFrames >= 10
+                            nf2 = 10;
+                        else
+                            nf2 = obj.hImageStack(i).numFrames;
+                        end
+                        image2 = mean(obj.hImageStack(i).data(:,:,1:nf2),3);
                         obj.hImageStack(i).channelTform = alignImages(image1, image2, 1);
+                        
+                        % if align AOI is checked in main GUI or
+                        % something.. 
+                        if ~exist('aoi1', 'var')
+                            aoi1 = findAOIs(image1, 'tol', 0);
+                        end
+                        aoi2 = findAOIs(image2, 'tol', 0);
+                        centroids2 = transformPointsForward(obj.hImageStack(i).channelTform, vertcat(aoi2.centroid));
+                         
+                        % affine transform
+                        [centroids1, centroids2] = getCentroidPairs(vertcat(aoi1.centroid), centroids2, 1);
+                        numCentroids = size(centroids1,1);
+                        rmse = sqrt(sum((centroids2-centroids1).^2)./numCentroids);
+                        disp([char(obj.hImageStack(j).name), ' & ', char(obj.hImageStack(i).name)...
+                            ' | Pairs: ', num2str(numCentroids), ' | Similarity Transform RMSE (x, y): ', num2str(rmse)]);
+                        
+                        if numCentroids >= 10
+                            obj.hImageStack(i).aoiTform = fitgeotrans(centroids1, centroids2, 'affine');
+                            centroids3 = transformPointsInverse(obj.hImageStack(i).aoiTform, centroids2);
+                            rmse = sqrt(sum((centroids3-centroids1).^2)./numCentroids);
+                            disp([char(obj.hImageStack(j).name), ' & ', char(obj.hImageStack(i).name)...
+                                ' | Pairs: ', num2str(numCentroids), ' | Affine Transform RMSE (x, y): ', num2str(rmse)]);
+                            
+                            % maybe make a plot? 
+                            % subplot add to figure that is generated?
+                            
+                        else
+                            disp([char(obj.hImageStack(j).name), ' & ', char(obj.hImageStack(i).name)...
+                                ' | Too Few Pairs for Affine Transform: ', num2str(numCentroids)])
+                        end
                     end
                 end
                 
@@ -725,7 +761,7 @@ classdef smExperimentViewer < handle
                         end
                         
                         if ~isempty(obj.hImageStack(i).aoiTform)
-                            centroidsB = transformPointsInverse(obj.hImageStack(i).aoiTform, centroidsB);
+                            centroidsB = transformPointsForward(obj.hImageStack(i).aoiTform, centroidsB); % or reverse...?
                         end
                         
                         % Write in a funciton somewhere. for now, this works
@@ -1110,8 +1146,8 @@ classdef smExperimentViewer < handle
                     obj.hManualEventLeftBtn.Position = [x1, y4, w4, lineh];
                     obj.hManualEventRightBtn.Position = [x1+w4, y4, w4, lineh];
                     
-                    obj.hManualEventUpBtn.Position = [x1+2*w4, y4, w4, lineh];
-                    obj.hManualEventDownBtn.Position = [x1+3*w4, y4, w4, lineh];
+                    obj.hManualEventDownBtn.Position = [x1+2*w4, y4, w4, lineh];
+                    obj.hManualEventUpBtn.Position = [x1+3*w4, y4, w4, lineh];
                     
                     % AOI INFO PANEL --------------------------------------
                     
