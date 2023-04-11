@@ -35,6 +35,7 @@ classdef AOIViewer < handle
         testMenu
         smExperimentViewer = 0
         GridOn = 'on'
+        subtractMinTimeSeriesValue = 1;
         
     end
     
@@ -688,7 +689,7 @@ classdef AOIViewer < handle
                             w = size(im,1);
                             imagegrid = 1:nrow*ncol;
                             imagegrid = reshape(imagegrid, [ncol,nrow]);
-                            boundevents = find(obj.hAOI(obj.idx).fit.class>1);
+                            boundevents = find(obj.hAOI(obj.idx).fit.class>0);
                             for i = 1:numel(boundevents)
                                 [x0, y0] = find(imagegrid==boundevents(i));
                                 x0 = x0-1;
@@ -705,7 +706,10 @@ classdef AOIViewer < handle
         % Plot Time Series
         function plotTimeSeries(obj, init)
             if ~isempty(obj.hAOI)
-                y = obj.hAOI(obj.idx).timeSeries - obj.hAOI(obj.idx).minTimeSeriesValue;
+                y = obj.hAOI(obj.idx).timeSeries;
+                if obj.subtractMinTimeSeriesValue
+                    y = y - obj.hAOI(obj.idx).minTimeSeriesValue;
+                end
                 if isempty(obj.hAOI(obj.idx).fit) && length(obj.hAxesTimeSeries.Children) > 1
                     delete(obj.hAxesTimeSeries.Children(1));
                 end
@@ -734,7 +738,10 @@ classdef AOIViewer < handle
                     
                     % if idealized trace
                     if ~isempty(obj.hAOI(obj.idx).fit)
-                        y1 = obj.hAOI(obj.idx).fit.ideal - obj.hAOI(obj.idx).minTimeSeriesValue;
+                        y1 = obj.hAOI(obj.idx).fit.ideal;
+                        if obj.subtractMinTimeSeriesValue
+                            y1 = y1 - obj.hAOI(obj.idx).minTimeSeriesValue;
+                        end
                         hold(obj.hAxesTimeSeries, 'on');
                         plot(x, y1, '-k', 'Parent', obj.hAxesTimeSeries, 'linewidth', 1.5);
                         hold(obj.hAxesTimeSeries, 'off');
@@ -762,7 +769,10 @@ classdef AOIViewer < handle
         % Plot Histogram
         function plotHistogram(obj, init)
             if ~isempty(obj.hAOI)
-                x = obj.hAOI(obj.idx).timeSeries - obj.hAOI(obj.idx).minTimeSeriesValue;
+                x = obj.hAOI(obj.idx).timeSeries;
+                if obj.subtractMinTimeSeriesValue
+                    x = x - obj.hAOI(obj.idx).minTimeSeriesValue;
+                end
                 % bins = ceil(1 + log2(numel(x))); % sturges
                 bins = ceil(sqrt(numel(x))); % sqrt
                 %bins = round(numel(x)/3);

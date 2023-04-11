@@ -283,7 +283,7 @@ classdef ImageStack < handle
                 images(:,:,i) = obj.getFrame(i);
                 waitbar(i/obj.numFrames, wb)
             end
-            images = uint16(images);
+            images = 
             obj.data = images;
             close(wb)
         end

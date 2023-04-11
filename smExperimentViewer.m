@@ -12,12 +12,13 @@ classdef smExperimentViewer < handle
     % list box
     
     properties
-        
         hFigure
         hImageStack = ImageStack.empty()
         hImageStackViewer = {};
-        hAOIViewer = {}; % temporary to handle non populated AOIs
-        
+        hAOIViewer = {}; % temporary to handle non populated AOIs (switch to mat or deal/horzcat)
+    end
+    
+    properties (Access = 'private')
         % Layout
         hShowButtonGroup
         hShowImagesOnlyBtn
@@ -38,6 +39,7 @@ classdef smExperimentViewer < handle
         hAlignPanel
         hAlignLoadBtn
         hAlignComputeBtn
+        hAlignClearBtn
         hAlignSaveBtn
         
         hDriftPanel
@@ -48,6 +50,7 @@ classdef smExperimentViewer < handle
         hFindAOIPanel
         hFindAOIRefBtn
         hMapAOIRefBtn
+        hSetAOIParametersBtn
         hFindAOIOutlierBtn
         hFindAOIsClearBtn
         
@@ -125,7 +128,7 @@ classdef smExperimentViewer < handle
         function obj = smExperimentViewer()
             % Window ------------------------------------------------------
             obj.hFigure = figure('Name', 'smExperimentViewer', ...
-                'Units', 'normalized', 'Position', [0.25 0.2 0.5 0.6], ...
+                'Units', 'normalized', 'Position', [0.1 0.2 0.8 0.6], ...
                 'MenuBar', 'none', 'ToolBar', 'none', 'numbertitle', 'off', ...
                 'UserData', obj ... % ref this object
                 );           % custom resize function
@@ -133,8 +136,8 @@ classdef smExperimentViewer < handle
             
             % Menu Bar ----------------------------------------------------
             hMenuFile = uimenu(obj.hFigure, 'Text', 'File');
-            uimenu(hMenuFile, 'Text', 'Load Experiment');
-            uimenu(hMenuFile, 'Text', 'Save Experiment');
+            uimenu(hMenuFile, 'Text', 'Load Experiment', 'Callback', @(varargin) obj.loadExperiment());
+            uimenu(hMenuFile, 'Text', 'Save Experiment', 'Callback', @(varargin) obj.saveExperiment());
             
             hMenuImages = uimenu(obj.hFigure, 'Text', 'Images');
             hMenuImagesLayout = uimenu(hMenuImages, 'Text', 'Layout');
@@ -226,6 +229,9 @@ classdef smExperimentViewer < handle
             obj.hAlignComputeBtn = uicontrol(obj.hAlignPanel, 'Style', 'pushbutton', ...
                 'String', 'Compute',...
                 'Callback', @(varargin) obj.alignAllToReference());
+            obj.hAlignClearBtn = uicontrol(obj.hAlignPanel, 'Style', 'pushbutton', ...
+                'String', 'Clear',...
+                'Callback', @(varargin) obj.clearAllAlignments());
             obj.hAlignSaveBtn = uicontrol(obj.hAlignPanel, 'Style', 'pushbutton', ...
                 'String', 'Save',...
                 'Callback', @(varargin) obj.saveAlignment());
@@ -267,7 +273,7 @@ classdef smExperimentViewer < handle
                 'String', 'Find',...
                 'Callback', @(varargin) obj.findAOIsInReference());
             obj.hFindAOIOutlierBtn = uicontrol(obj.hFindAOIPanel, 'Style', 'pushbutton', ...
-                'String', 'Filter', ...
+                'String', 'Remove Outliers', ...
                 'Callback', @(varargin) obj.filterReferenceAOI());
             obj.hMapAOIRefBtn = uicontrol(obj.hFindAOIPanel, 'Style', 'pushbutton', ...
                 'String', 'Propogate AOIs', ...
@@ -275,6 +281,9 @@ classdef smExperimentViewer < handle
             obj.hFindAOIsClearBtn = uicontrol(obj.hFindAOIPanel, 'Style', 'pushbutton', ...
                 'String', 'Clear', ...
                 'Callback', @(varargin) obj.clearAllAOIs());
+            obj.hSetAOIParametersBtn = uicontrol(obj.hFindAOIPanel, 'Style', 'pushbutton', ...
+                'String', 'Set Parameters', ...
+                'Callback', @(varargin) obj.setAOIParameters());
             
             % AOI Naviation -----------------------------------------------
             obj.hNavigationPanel = uipanel(obj.hFigure,...
@@ -407,6 +416,73 @@ classdef smExperimentViewer < handle
             
         end
         
+        function saveExperiment(obj)
+            
+            % save everthing in hImageStacks except raw images (.data)
+            experiment = obj.hImageStack;
+            [experiment.data] = deal([]);
+           d
+            [saveFile, savePath] = uiputfile('Experiment.mat');
+            disp(['Saving ', [savePath, saveFile], '...']);
+            
+            % create data stucture output (less memory)
+%            experiment = []; 
+            
+%             for i = 1:obj.numImageStacks
+%                 e=struct; 
+%                 e.filePath = obj.hImageStack(i).filePath;
+%                 e.fileInfo = obj.hImageStack(i).fileInfo;
+%                 e.name = obj.hImageStack(i).name;
+%                 e.time_s = obj.hImageStack(i).time_s;
+%                 e.aoiParameters = obj.hImageStack(i).aoiParameters;
+%                 e.driftList = obj.hImageStack(i).driftList;
+%                 e.channelTform = obj.hImageStack(i).channelTform;
+%                 e.aoiTform = obj.hImageStack(i).aoiTform;
+%                 
+%                 % AOI features
+%                 e.centroid = vertcat(obj.hImageStack(i).AOIs.centroid);
+%                 e.sigma = vertcat(obj.hImageStack(i).AOIs.sigma);
+%                 e.boundingBox = vertcat(obj.hImageStack(i).AOIs.boundingBox);
+%                 e.gallery = horzcat(obj.hImageStack(i).AOIs.gallery);
+%                 e.timeSeries = horzcat(obj.hImageStack(i).AOIs.timeSeries);
+%                 e.status = vertcat(obj.hImageStack(i).AOIs.status);
+%                 e.fit = vertcat(obj.hImageStack(i).AOIs.fit);
+%                 e.fitParam = vertcat(obj.hImageStack(i).AOIs.fitParam);
+%                 % events; dwells
+%   
+%                 experiment = [experiment; e];
+%             end
+            save([savePath, saveFile], 'experiment', '-v7.3');
+            disp('>> Experiment Saved.');
+            
+        end
+        
+        function loadExperiment(obj)
+            [loadFile, loadPath] = uigetfile('.mat');
+            disp(['Loading ', [loadPath, loadFile], '...']);
+            load([loadPath, loadFile], 'experiment');
+            
+            % does data already exist? append or overwrite? 
+            for k = 1:numel(experiment)
+                obj.hImageStack = [obj.hImageStack experiment(k)];
+                % Load images to memory (should have popup)
+                
+                p = numel(obj.hImageStack);
+                obj.hImageStack(p).loadImagesToMemory();
+                obj.hImageStackViewer{p} = ImageStackViewer(experiment(k), obj.hFigure);
+                if isempty(experiment(k).AOIs)
+                    obj.hAOIViewer{p} = AOIViewer([], obj.hFigure);
+                else
+                    obj.hAOIViewer{p} = AOIViewer(experiment(k), obj.hFigure);
+                end
+            end
+            obj.updateChannelList();
+            obj.resize();
+
+            disp('>> Experiment Loaded.');
+            
+        end
+        
         function delete(obj)
             %DELETE Delete all graphics objects and listeners.
             obj.deleteListeners();
@@ -502,7 +578,6 @@ classdef smExperimentViewer < handle
                 obj.hImageStack = [obj.hImageStack imageDataTemp{k}];
                 p = numel(obj.hImageStack);
                 obj.hImageStackViewer{p} = ImageStackViewer(imageDataTemp{k}, obj.hFigure);
-                % addlistener(obj.hImageStack(p), 'AOIsIntegrated', 'PostSet', @(varargin) obj.updateAOIViewers(p));
                 obj.hAOIViewer{p} = AOIViewer([], obj.hFigure);
             end
             obj.updateChannelList();
@@ -732,6 +807,11 @@ classdef smExperimentViewer < handle
             end
         end
         
+        function clearAllAlignments(obj)
+            [obj.hImageStack.aoiTform] = deal([]);
+            [obj.hImageStack.channelTform] = deal([]);
+        end
+        
         function findAOIsInReference(obj)
             % find and intergrate AOIs in the reference channel
             obj.hImageStack(obj.ReferenceIdx).findAreasOfInterest;
@@ -842,6 +922,10 @@ classdef smExperimentViewer < handle
             else
                 obj.hAOIViewer{obj.ChannelIdx}.clearThisIdeal();
             end
+        end
+        
+        function setAOIParameters(obj)
+           obj.hImageStack(obj.ReferenceIdx).setAOIParameters()
         end
         
         function manualAdjustStates(obj)
@@ -984,7 +1068,7 @@ classdef smExperimentViewer < handle
                     obj.hDriftAllBtn.Position = [x+w1/2, y1, w1/2, lineh];
                     
                     % CHANNEL ALIGNMENT PANEL -----------------------------
-                    panelheight = 2*(lineh+margin);
+                    panelheight = 3*(lineh+margin);
                     y = y - panelheight-2*margin;
                     obj.hAlignPanel.Visible = 'on';
                     obj.hAlignPanel.Position = [x, y, w, panelheight];
@@ -993,13 +1077,15 @@ classdef smExperimentViewer < handle
                     
                     % inside the panel
                     y1 = panelheight-2*lineh;
-                    obj.hAlignLoadBtn.Position = [x, y1, w1/3, lineh];
-                    obj.hAlignComputeBtn.Position = [x+w1/3, y1, w1/3, lineh];
-                    obj.hAlignSaveBtn.Position = [x+2*w1/3, y1, w1/3, lineh];
+                    y2 = y1 - lineh; 
+                    obj.hAlignLoadBtn.Position = [x, y1, w1/2, lineh];
+                    obj.hAlignComputeBtn.Position = [x+w1/2, y1, w1/2, lineh];
+                    obj.hAlignClearBtn.Position = [x, y2, w1/2, lineh];
+                    obj.hAlignSaveBtn.Position = [x+w1/2, y2, w1/2, lineh];
                     
                     
                     % DETECT AOI PANEL ------------------------------------
-                    panelheight = 3*(lineh+margin);
+                    panelheight = 4*(lineh+margin);
                     
                     y = y - panelheight-2*margin;
                     obj.hFindAOIPanel.Visible = 'on';
@@ -1010,11 +1096,12 @@ classdef smExperimentViewer < handle
                     % inside the panel
                     y1 = panelheight-2*lineh;
                     y2 = y1-lineh; 
-                    obj.hFindAOIRefBtn.Position = [x, y1, w1/2, lineh];
-                    obj.hFindAOIOutlierBtn.Position = [x+w1/2, y1, w1/2, lineh];
-                    obj.hMapAOIRefBtn.Position = [x, y2, w1/2, lineh];
-                    obj.hFindAOIsClearBtn.Position = [x+w1/2, y2, w1/2, lineh];
-                    
+                    y3 = y2-lineh;
+                    obj.hFindAOIRefBtn.Position = [x, y1, w1, lineh];
+                    obj.hSetAOIParametersBtn.Position = [x, y2, w1/2, lineh];
+                    obj.hFindAOIOutlierBtn.Position = [x+w1/2, y2, w1/2, lineh];
+                    obj.hMapAOIRefBtn.Position = [x, y3, w1/2, lineh];
+                    obj.hFindAOIsClearBtn.Position = [x+w1/2, y3, w1/2, lineh];
                     
                     % IMAGE STACK VIEWERS ---------------------------------
                     

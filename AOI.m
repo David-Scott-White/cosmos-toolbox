@@ -24,11 +24,14 @@ classdef AOI < handle
         status = 1;
         
     end
+    
     properties (Dependent)
+        eventList
+        dwellList
+        pixelList
         sumImageMask
         maxImageMask
         avgImageMask
-        pixelList
         minTimeSeriesValue
     end
     
@@ -73,6 +76,11 @@ classdef AOI < handle
                 m = min(obj.timeSeries);
             end
         end
+        function e = get.eventList(obj)
+            if ~isempty(obj.fit)
+                e = findEvents(obj.fit.class);
+            end
+        end
         
         function viewAOI(obj, time_s)
             % launch AOIViewer
@@ -110,7 +118,15 @@ classdef AOI < handle
             %                 case 'CP-Cluster'
             %                 case 'Threshold'
             %             end
-            obj.fit = runDISC(obj.timeSeries);
+            f = runDISC(obj.timeSeries);
+            
+            % normalize last class valu to zero
+            % runs twice; 
+            m = min(f.class);
+            if m > 0
+                f.class = f.class-m; 
+            end
+            obj.fit = f; 
         end
         
         function manualAdjustState(obj, p)

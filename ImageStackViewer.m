@@ -508,7 +508,7 @@ classdef ImageStackViewer < handle
         end
         
         function menuSetAOIParameters(obj)
-            obj.hImageStack.setAOIParameters([]);
+            obj.hImageStack.setAOIParameters();
         end
         
         function menuFindAOIs(obj)
